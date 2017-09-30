@@ -55,8 +55,8 @@ logger = logging.getLogger('fb_crawl')
 
 config = configparser.ConfigParser()
 config.read('./private_conf.conf')
-app_id = config['APP']['app_id'] #'451440081647450'
-app_secret = config['APP']['app_secret'] #'44f56c485461bb02a4762a4d703696f7'
+app_id = config['APP']['app_id'] 
+app_secret = config['APP']['app_secret']
 token = 'access_token=' + app_id + '|' + app_secret
 
 def str2date(str):
