@@ -28,10 +28,12 @@ def read_csv(infile,headers):
 # 			print('dump to file: %s'%fname)
 # 			json.dump(csv_content[i:i+batch_size],open(fname,'w'))
 
-for dir,_,files in os.walk('../v_1/result/'):
-	if 'feed_ids.csv' in files:		
-		page = dir.split('/')[-1]				
-		src_name = './output/pages/'+ page + '/todo_body/v1_legacy.json'				
-		if os.path.exists(src_name):
-			print('Remove file:%s'%src_name)
-			os.remove(src_name)
+#Remove all v1_legacy.json files
+# for dir,_,files in os.walk('../v_1/result/'):
+# 	if 'feed_ids.csv' in files:		
+# 		page = dir.split('/')[-1]				
+# 		src_name = './output/pages/'+ page + '/todo_body/v1_legacy.json'				
+# 		if os.path.exists(src_name):
+# 			print('Remove file:%s'%src_name)
+# 			os.remove(src_name)
+

@@ -42,7 +42,7 @@ def dir_DONE_BODY(page):
 def dir_BODY(page):
 	return __created_dir_on_read__('./output/pages/%s/feeds/'%page)
 def fname_DONE_BODY(page,feed_id,created_time):
-	return __create_dir_on_read_FILE__(os.path.join(dir_BODY(page),created_time + '_' + feed_id +'.json'))
+	return __create_dir_on_read_FILE__(os.path.join(dir_BODY(page),created_time + '_' + feed_id +'.json.gz'))
 #################################################################
 ### END OF FILE UTILS
 #################################################################
@@ -168,11 +168,12 @@ def fetch_headers_all_pages():
 ### STEP 2: FETCH FEED DETAILS
 #################################
 def fetch_body(page,feed_id):
-	url = 'https://graph.facebook.com/v2.7/%s?fields=id,created_time,description,message,message_tags,link,comments.limit(5000){created_time,message,message_tags,comments.limit(5000){message,message_tags,created_time,reactions.limit(5000)}},reactions.limit(5000)&%s'%(feed_id,token)
+	url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(5000),comments.limit(3000){reactions.limit(5000),comments.limit(3000){reactions.limit(5000),message,from,id},message,from,id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
 	try:
 		feed_body = exhaust_fetch(url)
-		fname = fname_DONE_BODY(page,feed_id,feed_body['created_time'])
-		json.dump(feed_body,open(fname,'w'))
+		fname = fname_DONE_BODY(page,feed_id,feed_body['created_time'])		
+		#json.dump(feed_body,open(fname,'w'))
+		json.dump(feed_body,gzip.open(fname,'wt'))
 	except Exception as e:
 		err_msg = 'Error while fetching page:%s - feed:%s'%(page,feed_id)
 		logger.error(err_msg + ' Error details:' + str(e))
