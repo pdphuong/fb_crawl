@@ -168,11 +168,10 @@ def fetch_headers_all_pages():
 ### STEP 2: FETCH FEED DETAILS
 #################################
 def fetch_body(page,feed_id):
-	url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(5000),comments.limit(3000){reactions.limit(5000),comments.limit(3000){reactions.limit(5000),message,from,id},message,from,id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
+	url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(1000),comments.limit(250){reactions.limit(1000),comments.limit(250){reactions.limit(1000),message,from,id},message,from,id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
 	try:
 		feed_body = exhaust_fetch(url)
 		fname = fname_DONE_BODY(page,feed_id,feed_body['created_time'])		
-		#json.dump(feed_body,open(fname,'w'))
 		json.dump(feed_body,gzip.open(fname,'wt'))
 	except Exception as e:
 		err_msg = 'Error while fetching page:%s - feed:%s'%(page,feed_id)
