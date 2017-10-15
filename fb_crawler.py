@@ -213,32 +213,37 @@ def feed_too_fresh(f_todo):
 def fetch_body_batches():
 	logger.info('Begin fetch feed bodies...')
 	
-	pages = list_sub_dirs(dir_PAGES())
-	# Sequentially
-	# for page in pages:
-	# 	__fetch_body_batches__(page)
+	pages = list_sub_dirs(dir_PAGES())	
+	page_ftodos = []
+	for page in pages:
+		dir = dir_TODO_BODY(page)
+		for f_todo in sorted(list_files(dir)):
+			page_ftodos.append((page,f_todo))
 
+	print(page_ftodos)
 	# In Parallel:
 	with Pool(16) as p:
-		p.map(__fetch_body_batches__, pages)
+		p.map(__fetch_body_batches__, page_ftodos)
 
 
-def __fetch_body_batches__(page):	
-	
+def __fetch_body_batches__(page_ftodo):
+
+	page,f_todo = page_ftodo
+
+	if feed_too_fresh(f_todo):
+		logger.info('\tPage %s File %s is too new..skip for now'%(page,f_todo))
+		return
+
 	dir = dir_TODO_BODY(page)
-	for f_todo in sorted(list_files(dir)):
-		if feed_too_fresh(f_todo):
-			logger.info('\tPage %s File %s is too new..skip for now'%(page,f_todo))
-			continue
-		logger.info('Fetching Page %s File %s'%(page,f_todo))
-		f_done = os.path.join(dir_DONE_BODY(page),f_todo)
-		f_todo = os.path.join(dir,f_todo)
-		todos = json.load(open(f_todo,'r'))
-		for todo in todos:
-			logger.info('Fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
-			fetch_body(page,todo['id'])
-			logger.info('DONE fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
-		os.rename(f_todo,f_done)
+	logger.info('Fetching Page %s File %s'%(page,f_todo))
+	f_done = os.path.join(dir_DONE_BODY(page),f_todo)
+	f_todo = os.path.join(dir,f_todo)
+	todos = json.load(open(f_todo,'r'))
+	for todo in todos:
+		logger.info('Fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
+		fetch_body(page,todo['id'])
+		logger.info('DONE fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
+	os.rename(f_todo,f_done)
 
 def __main__():
 	parser = argparse.ArgumentParser(prog='fb_crawler')
