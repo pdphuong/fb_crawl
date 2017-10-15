@@ -1,5 +1,8 @@
 import requests, os, shutil, datetime, time, json, csv, gzip,argparse, sys, configparser
 from retrying import retry
+from collections import deque
+from multiprocessing import Pool
+
 
 #################################################################
 ###	FILE UTILS
@@ -65,8 +68,16 @@ def date2str(date):
 	return date.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 ###############################
-@retry(wait_random_min=1000, wait_random_max=10000)#Wait randomly 1sec to 10sec
+
 def getRequests(url):
+	resp = __getRequests__(url)
+	if 'error' in resp:
+		raise Exception(resp)
+	else:
+		return resp
+
+@retry(wait_random_min=1000, wait_random_max=10000)#Wait randomly 1sec to 10sec
+def __getRequests__(url):
 	try:
 		requests_result = requests.get(url, headers={'Connection':'close'}).json()
 		time.sleep(0.01)
@@ -75,38 +86,49 @@ def getRequests(url):
 		logger.error('Error in handling ' + url + str(e))
 		raise e
 ###############################
-@retry(wait_random_min=10000, wait_random_max=30000,stop_max_attempt_number=2)#Wait randomly 10sec to 30sec
+#@retry(wait_random_min=10000, wait_random_max=30000,stop_max_attempt_number=2)#Wait randomly 10sec to 30sec
 def exhaust_fetch(url):
 	return __exhaust_fetch__(url)
 
 def __exhaust_fetch__(url):
 
-	#@retry(wait_random_min=10000, wait_random_max=30000,stop_max_attempt_number=3)#Wait randomly 10sec to 1min
-	def fill_obj(obj):
+	next_pages = deque()
+	fetched_segments = list()
+
+	def get_next_paging(obj):
 		assert type(obj) is dict
 
 		if 'data' in obj \
-				and 'paging' in obj \
-				and 'next' in obj['paging']:
+			and 'paging' in obj \
+			and 'next' in obj['paging']:
 
-			sub_obj = __exhaust_fetch__(obj['paging']['next'])
-			assert 'data' in sub_obj
-			obj['data'] += sub_obj['data']
+			next_url = obj['paging']['next']
+			append_point = obj['data']
+			next_pages.append((append_point,next_url))
 
+			for e in obj['data']:
+				get_next_paging(e)
+		
 		for k,v in obj.items():
 			if k in ['data','paging']: continue
 			if type(v) is dict:
-				obj[k] = fill_obj(v)
-		return obj
+				get_next_paging(v)
 
-	resp = getRequests(url)
+	top_resp = getRequests(url)
+	get_next_paging(top_resp)
 
-	if 'error' in resp:
-		err_msg = 'Error fetching url:%s\n Details:%s'%(url,str(resp))
-		logger.error(err_msg)
-		raise Exception(err_msg)
+	while(len(next_pages) > 0):
+		append_point, next_url = next_pages.pop()
+		sub_resp = getRequests(next_url)
+		assert 'data' in sub_resp
+		fetched_segments.append((append_point,sub_resp))
+		get_next_paging(sub_resp)
 
-	return fill_obj(resp)
+	while(len(fetched_segments) > 0):
+		append_point, sub_resp = fetched_segments.pop()
+		append_point.extend(sub_resp['data'])
+
+	return top_resp
 ###############################
 
 ################################
@@ -168,14 +190,17 @@ def fetch_headers_all_pages():
 ### STEP 2: FETCH FEED DETAILS
 #################################
 def fetch_body(page,feed_id):
-	url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(1000),comments.limit(250){reactions.limit(1000),comments.limit(250){reactions.limit(1000),message,from,id},message,from,id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
+	#For broad posts
+	url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(5000){id,type},comments.limit(2000){reactions.limit(1000){id,type},comments.limit(1000){reactions.limit(1000){id,type},message,from{id},id},message,from{id},id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
+	#For deep posts
+	#url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(5000),comments.limit(200){reactions.limit(1000){id,type},comments.limit(1000){reactions.limit(1000){id,type},message,from{id},id},message,from{id},id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
 	try:
 		feed_body = exhaust_fetch(url)
 		fname = fname_DONE_BODY(page,feed_id,feed_body['created_time'])		
 		json.dump(feed_body,gzip.open(fname,'wt'))
 	except Exception as e:
-		err_msg = 'Error while fetching page:%s - feed:%s'%(page,feed_id)
-		logger.error(err_msg + ' Error details:' + str(e))
+		err_msg = 'Error fetching page:%s - feed:%s'%(page,feed_id)
+		logger.error(err_msg + '\n%s\n'%str(e))
 		with open(fname_FAILED_FEED(),'a') as f:
 			csv.DictWriter(f,['page','feed_id','url']).writerow({'page':page,'feed_id':feed_id,'url':url})
 
@@ -186,24 +211,34 @@ def feed_too_fresh(f_todo):
 	return diff.days < 5
 	
 def fetch_body_batches():
-
 	logger.info('Begin fetch feed bodies...')
-	for page in list_sub_dirs(dir_PAGES()):
-		logger.info('\tFor page:%s'%page)
-		dir = dir_TODO_BODY(page)
-		for f_todo in sorted(list_files(dir)):
-			if feed_too_fresh(f_todo):
-				logger.info('\t\tFile %s is too new..skip for now'%f_todo)
-				continue
-			logger.info('\t\tFeeds in todo file::%s'%f_todo)
-			f_done = os.path.join(dir_DONE_BODY(page),f_todo)
-			f_todo = os.path.join(dir,f_todo)
-			todos = json.load(open(f_todo,'r'))
-			for todo in todos:
-				logger.info('\t\t\t Fetch feed id:%s'%todo['id'])
-				fetch_body(page,todo['id'])
-				logger.info('\t\t\t Done')
-			os.rename(f_todo,f_done)
+	
+	pages = list_sub_dirs(dir_PAGES())
+	# Sequentially
+	# for page in pages:
+	# 	__fetch_body_batches__(page)
+
+	# In Parallel:
+	with Pool(16) as p:
+		p.map(__fetch_body_batches__, pages)
+
+
+def __fetch_body_batches__(page):	
+	
+	dir = dir_TODO_BODY(page)
+	for f_todo in sorted(list_files(dir)):
+		if feed_too_fresh(f_todo):
+			logger.info('\tPage %s File %s is too new..skip for now'%(page,f_todo))
+			continue
+		logger.info('Fetching Page %s File %s'%(page,f_todo))
+		f_done = os.path.join(dir_DONE_BODY(page),f_todo)
+		f_todo = os.path.join(dir,f_todo)
+		todos = json.load(open(f_todo,'r'))
+		for todo in todos:
+			logger.info('Fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
+			fetch_body(page,todo['id'])
+			logger.info('DONE fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
+		os.rename(f_todo,f_done)
 
 def __main__():
 	parser = argparse.ArgumentParser(prog='fb_crawler')
