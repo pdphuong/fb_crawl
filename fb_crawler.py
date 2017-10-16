@@ -202,7 +202,8 @@ def fetch_body(page,feed_id):
 		err_msg = 'Error fetching page:%s - feed:%s'%(page,feed_id)
 		logger.error(err_msg + '\n%s\n'%str(e))
 		with open(fname_FAILED_FEED(),'a') as f:
-			csv.DictWriter(f,['page','feed_id','url']).writerow({'page':page,'feed_id':feed_id,'url':url})
+			csv.DictWriter(f,['page','feed_id','url','err']).\
+			writerow({'page':page,'feed_id':feed_id,'url':url,'err':str(e)})
 
 def feed_too_fresh(f_todo):
 	now = datetime.datetime.now(datetime.timezone.utc)
@@ -220,7 +221,6 @@ def fetch_body_batches():
 		for f_todo in sorted(list_files(dir)):
 			page_ftodos.append((page,f_todo))
 
-	print(page_ftodos)
 	# In Parallel:
 	with Pool(16) as p:
 		p.map(__fetch_body_batches__, page_ftodos)
