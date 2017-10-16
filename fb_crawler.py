@@ -1,7 +1,7 @@
 import requests, os, shutil, datetime, time, json, csv, gzip,argparse, sys, configparser
 from retrying import retry
 from collections import deque
-from multiprocessing.dummy import Pool
+from multiprocessing import Pool
 
 
 #################################################################
@@ -219,7 +219,8 @@ def fetch_body_batches():
 		dir = dir_TODO_BODY(page)
 		for f_todo in sorted(list_files(dir)):
 			page_ftodos.append((page,f_todo))
-	
+
+	print(page_ftodos)
 	# In Parallel:
 	with Pool(16) as p:
 		p.map(__fetch_body_batches__, page_ftodos)
