@@ -1,4 +1,4 @@
-import requests, os, shutil, datetime, time, json, csv, gzip,argparse, sys, configparser
+import requests, os, shutil, datetime, time, json, csv, gzip,argparse, sys, configparser, urllib
 from retrying import retry
 from collections import deque
 from multiprocessing import Pool
@@ -32,6 +32,8 @@ def fname_LOG():
 	return __create_dir_on_read_FILE__('./output/logs/log')
 def fname_FAILED_FEED():
 	return __create_dir_on_read_FILE__('./output/errors/feeds_failed_to_fetch.csv')
+def fname_TOO_LONG_FEED():
+	return __create_dir_on_read_FILE__('./output/errors/too_long_feeds.csv')
 def fname_TODO_HEADER():
 	return __create_dir_on_read_FILE__('./output/todo_header.json')
 def dir_DONE_HEADER(page):
@@ -72,7 +74,7 @@ def date2str(date):
 def getRequests(url):
 	resp = __getRequests__(url)
 	if 'error' in resp:
-		raise Exception(resp)
+		raise Exception('url:%s err:%s'%(url,resp))
 	else:
 		return resp
 
@@ -87,48 +89,71 @@ def __getRequests__(url):
 		raise e
 ###############################
 #@retry(wait_random_min=10000, wait_random_max=30000,stop_max_attempt_number=2)#Wait randomly 10sec to 30sec
+URL_REACTIONS 	= 'https://graph.facebook.com%s?limit=15000&after=%s&fields=id,type' + '&%s'%token
+URL_COMMENTS_L1	= 'https://graph.facebook.com%s?limit=1000&&after=%s&fields=id,from{id},message,reactions.limit(100){id,type},comments.limit(100){id,from{id},message,reactions.limit(100){id,type}}' + '&%s'%token
+URL_COMMENTS_L2 = 'https://graph.facebook.com%s?limit=1000&after=%s&fields=id,from{id},message,reactions.limit(5000){id,type}' + '&%s'%token
+
 def exhaust_fetch(url):
 	return __exhaust_fetch__(url)
 
 def __exhaust_fetch__(url):
+	
+	def custom_url(url_0):
 
-	next_pages = deque()
-	fetched_segments = list()
-
-	def get_next_paging(obj):
-		assert type(obj) is dict
-
-		if 'data' in obj \
-			and 'paging' in obj \
-			and 'next' in obj['paging']:
-
-			next_url = obj['paging']['next']
-			append_point = obj['data']
-			next_pages.append((append_point,next_url))
-
-			for e in obj['data']:
-				get_next_paging(e)
+		parts = urllib.parse.urlsplit(url_0)
+		params = urllib.parse.parse_qs(parts.query)
+		after = params['after'][0]
+		fields = params['fields'][0]
 		
+		if parts.path.split('/')[-1] == 'reactions':
+			return URL_REACTIONS%(parts.path,after)
+		elif parts.path.split('/')[-1] == 'comments':
+			if 'comments' in fields: #comments
+				return URL_COMMENTS_L1%(parts.path,after)
+			else:
+				return URL_COMMENTS_L2%(parts.path,after)
+		else:
+			raise Exception('Invalid url:%s'%url_0)
+
+	def fill_obj(obj):
+		assert type(obj) is dict, 'Invalid object :%s'%str(obj)
+
+		if 'paging' in obj and 'next' in obj['paging']:			
+			
+			next_url = custom_url(obj['paging']['next'])			
+			cont = True
+
+			while(cont):
+
+				try:
+					next_obj = getRequests(next_url)
+					obj['data'].extend(next_obj['data'])
+					if 'paging' in next_obj and 'next' in next_obj['paging']:
+						next_url = custom_url(next_obj['paging']['next'])
+					else:
+						cont = False
+				except Exception as e:
+					if 'After Cursor specified exceeds the max limit supported by this endpoint' in str(e):						
+						logger.warning('Too long feed. url:%s err:%s'%(url,str(e)))
+						with open(fname_TOO_LONG_FEED(),'a') as f:
+							csv.DictWriter(f,['url','err']).writerow({'url':url,'err':str(e)})
+						cont = False
+					else:
+						raise e
+
 		for k,v in obj.items():
-			if k in ['data','paging']: continue
+		
 			if type(v) is dict:
-				get_next_paging(v)
+				fill_obj(v)
+			elif type(v) is list:
+				for sub_obj in v:
+					fill_obj(sub_obj)
 
-	top_resp = getRequests(url)
-	get_next_paging(top_resp)
+	top_obj = getRequests(url)
+	fill_obj(top_obj)
 
-	while(len(next_pages) > 0):
-		append_point, next_url = next_pages.pop()
-		sub_resp = getRequests(next_url)
-		assert 'data' in sub_resp
-		fetched_segments.append((append_point,sub_resp))
-		get_next_paging(sub_resp)
+	return top_obj
 
-	while(len(fetched_segments) > 0):
-		append_point, sub_resp = fetched_segments.pop()
-		append_point.extend(sub_resp['data'])
-
-	return top_resp
 ###############################
 
 ################################
@@ -191,9 +216,7 @@ def fetch_headers_all_pages():
 #################################
 def fetch_body(page,feed_id):
 	#For broad posts
-	url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(5000){id,type},comments.limit(2000){reactions.limit(1000){id,type},comments.limit(1000){reactions.limit(1000){id,type},message,from{id},id},message,from{id},id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
-	#For deep posts
-	#url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(5000),comments.limit(200){reactions.limit(1000){id,type},comments.limit(1000){reactions.limit(1000){id,type},message,from{id},id},message,from{id},id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
+	url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(1000){id,type},comments.limit(1000){reactions.limit(100){id,type},comments.limit(100){reactions.limit(100){id,type},message,from{id},id},message,from{id},id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
 	try:
 		feed_body = exhaust_fetch(url)
 		fname = fname_DONE_BODY(page,feed_id,feed_body['created_time'])		
@@ -224,7 +247,6 @@ def fetch_body_batches():
 	# In Parallel:
 	with Pool(16) as p:
 		p.map(__fetch_body_batches__, page_ftodos)
-
 
 def __fetch_body_batches__(page_ftodo):
 
