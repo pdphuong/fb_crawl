@@ -184,13 +184,15 @@ def fetch_headers(page, since):
 			break
 		headers.append(feed)
 	
-	if len(headers) > 0:		
-		timestamp = headers[0]['created_time']
-		fname = os.path.join(dir_TODO_BODY(page),timestamp + '.json')
-		json.dump(headers,open(fname,'w'))
-		return timestamp
-	else:
+	if len(headers) == 0:
 		return date2str(since)
+
+	for i in range(0,len(headers),5):
+		timestamp = headers[i]['created_time']		
+		fname = os.path.join(dir_TODO_BODY(page),'%s_%05d.json'%(timestamp,i))
+		json.dump(headers[i:i+5],open(fname,'w'))
+
+	return headers[0]['created_time']
 
 def fetch_headers_all_pages():
 
