@@ -344,8 +344,6 @@ def __main__():
 
 	args = parser.parse_args()
 
-	print(args)
-
 	if args.which == 'header':
 		
 		if args.page is None:
