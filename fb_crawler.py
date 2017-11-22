@@ -245,60 +245,7 @@ def fetch_headers_all_pages():
 #################################
 ### STEP 2: FETCH FEED DETAILS
 #################################
-# def fetch_body(page,feed_id):
-# 	#For broad posts
-# 	url = 'https://graph.facebook.com/v2.7/%s?fields=reactions.limit(1000){id,type},comments.limit(1000){reactions.limit(100){id,type},comments.limit(100){reactions.limit(100){id,type},message,from{id},id},message,from{id},id},id,created_time,description,message,message_tags,link&%s'%(feed_id,token)
-# 	try:
-# 		feed_body = exhaust_fetch(url)
-# 		fname = fname_DONE_BODY(page,feed_id,feed_body['created_time'])		
-# 		json.dump(feed_body,gzip.open(fname,'wt'))
-# 	except Exception as e:
-# 		err_msg = 'Error fetching page:%s - feed:%s'%(page,feed_id)
-# 		logger.error(err_msg + '\n%s\n'%str(e))
-# 		with open(fname_FAILED_FEED(),'a') as f:
-# 			csv.DictWriter(f,['page','feed_id','url','err']).\
-# 			writerow({'page':page,'feed_id':feed_id,'url':url,'err':str(e)})
 
-# def feed_too_fresh(f_todo):
-# 	now = datetime.datetime.now(datetime.timezone.utc)
-# 	dt = str2date(f_todo[:24])
-# 	diff =  now - dt
-# 	return diff.days < 5
-	
-# def fetch_body_batches():
-# 	logger.info('Begin fetch feed bodies...')
-	
-# 	pages = list_sub_dirs(dir_PAGES())	
-# 	page_ftodos = []
-# 	for page in pages:
-# 		dir = dir_TODO_BODY(page)
-# 		for f_todo in sorted(list_files(dir)):
-# 			page_ftodos.append((page,f_todo))
-
-# 	# In Parallel:
-# 	with Pool(16) as p:
-# 		p.map(__fetch_body_batches__, page_ftodos)
-
-# def __fetch_body_batches__(page_ftodo):
-
-# 	page,f_todo = page_ftodo
-
-# 	if feed_too_fresh(f_todo):
-# 		logger.info('\tPage %s File %s is too new..skip for now'%(page,f_todo))
-# 		return
-
-# 	dir = dir_TODO_BODY(page)
-# 	logger.info('Fetching Page %s File %s'%(page,f_todo))
-# 	f_done = os.path.join(dir_DONE_BODY(page),f_todo)
-# 	f_todo = os.path.join(dir,f_todo)
-# 	todos = json.load(open(f_todo,'r'))
-# 	for todo in todos:
-# 		logger.info('Fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
-# 		fetch_body(page,todo['id'])
-# 		logger.info('DONE fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
-# 	os.rename(f_todo,f_done)
-
-##########################
 def fetch_body_all(pages = None):
 	
 	logger.info('Begin fetch feed bodies...')
@@ -368,7 +315,7 @@ def __fetch_body_ftodo__(page_ftodo):
 				csv.DictWriter(f,['page','feed_id','url','err']).\
 				writerow({'page':page,'feed_id':feed_id,'err':err_msg})
 
-	logger.info('DONE fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
+		logger.info('DONE fetching Page %s File %s Feed %s'%(page,f_todo,todo['id']))
 	
 	os.rename(f_todo,f_done)
 
